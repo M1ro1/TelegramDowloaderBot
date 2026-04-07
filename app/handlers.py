@@ -4,6 +4,8 @@ import threading
 from html import escape
 
 import telebot
+# ДОДАНО: Імпортуємо спеціальні класи для створення альбомів
+from telebot.types import InputMediaPhoto, InputMediaVideo
 
 from .antiflood import AntiFloodGuard
 from .downloader import download_media
@@ -32,24 +34,44 @@ def build_caption(message, info: dict) -> str:
 
 
 def send_media_items(bot: telebot.TeleBot, chat_id: int, media_items: list, caption: str) -> None:
-    for index, item in enumerate(media_items):
-        current_caption = caption if index == 0 else None
+    if not media_items:
+        return
+
+    if len(media_items) == 1:
+        item = media_items[0]
         with open(item["path"], "rb") as media_file:
             if item["type"] == "photo":
-                bot.send_photo(
-                    chat_id=chat_id,
-                    photo=media_file,
-                    caption=current_caption,
-                    parse_mode="HTML" if current_caption else None,
-                )
+                bot.send_photo(chat_id, media_file, caption=caption, parse_mode="HTML")
             else:
-                bot.send_video(
-                    chat_id=chat_id,
-                    video=media_file,
-                    caption=current_caption,
-                    parse_mode="HTML" if current_caption else None,
-                    supports_streaming=True,
-                )
+                bot.send_video(chat_id, media_file, caption=caption, parse_mode="HTML", supports_streaming=True)
+        return
+
+    chunk_size = 10
+    for i in range(0, len(media_items), chunk_size):
+        chunk = media_items[i:i + chunk_size]
+
+        media_group = []
+        open_files = []
+
+        try:
+            for idx, item in enumerate(chunk):
+                f = open(item["path"], "rb")
+                open_files.append(f)
+
+                current_caption = caption if (i == 0 and idx == 0) else None
+                parse_mode = "HTML" if current_caption else None
+
+                if item["type"] == "photo":
+                    media_group.append(InputMediaPhoto(media=f, caption=current_caption, parse_mode=parse_mode))
+                else:
+                    media_group.append(InputMediaVideo(media=f, caption=current_caption, parse_mode=parse_mode,
+                                                       supports_streaming=True))
+
+            bot.send_media_group(chat_id=chat_id, media=media_group)
+
+        finally:
+            for f in open_files:
+                f.close()
 
 
 def register_handlers(bot: telebot.TeleBot, guard: AntiFloodGuard) -> None:
@@ -99,7 +121,7 @@ def register_handlers(bot: telebot.TeleBot, guard: AntiFloodGuard) -> None:
                 if not media_items:
                     fail_text = "Could not download media (private, unavailable, or too large)."
                     if is_instagram_url(url):
-                        fail_text = "Instagram media is unavailable. Check that post is public and `cokies.txt` is valid."
+                        fail_text = "Instagram media is unavailable. Check that post is public and `cookies.txt` is valid."
                     try:
                         bot.edit_message_text(
                             fail_text,
