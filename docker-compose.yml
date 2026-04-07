@@ -1,0 +1,10 @@
+version: '3.8'
+
+services:
+  bot:
+    build: .
+    container_name: tg_downloader_bot
+    restart: unless-stopped
+    volumes:
+      - ./.env:/app/.env:ro
+      - ./cokies.txt:/app/cokies.txt
