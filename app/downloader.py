@@ -10,6 +10,8 @@ import yt_dlp
 from .config import COOKIES_CANDIDATES, IMAGE_EXTENSIONS
 from .url_filter import is_instagram_url
 
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
+
 
 def resolve_cookie_file() -> Optional[str]:
     for candidate in COOKIES_CANDIDATES:
@@ -19,11 +21,13 @@ def resolve_cookie_file() -> Optional[str]:
     return None
 
 
-def detect_media_type(filepath: str) -> str:
+def detect_media_type(filepath: str) -> Optional[str]:
     ext = os.path.splitext(filepath)[1].lower()
     if ext in IMAGE_EXTENSIONS:
         return "photo"
-    return "video"
+    elif ext in VIDEO_EXTENSIONS:
+        return "video"
+    return None
 
 
 def _resolve_entry_filepath(ydl, entry: dict, temp_dir: str) -> Optional[str]:
@@ -68,7 +72,9 @@ def download_instagram_fallback(url: str, temp_dir: str, cookie_file: Optional[s
             for file_name in files:
                 filepath = os.path.join(root, file_name)
                 if os.path.isfile(filepath):
-                    media_items.append({"path": filepath, "type": detect_media_type(filepath)})
+                    m_type = detect_media_type(filepath)
+                    if m_type:
+                        media_items.append({"path": filepath, "type": m_type})
 
         return media_items, {"uploader": "Instagram", "description": ""}
     except subprocess.CalledProcessError as error:
@@ -111,18 +117,25 @@ def download_media(url: str):
                     filepath = _resolve_entry_filepath(ydl, entry, temp_dir)
                     if filepath and filepath not in seen_paths:
                         seen_paths.add(filepath)
-                        media_items.append({"path": filepath, "type": detect_media_type(filepath)})
+                        m_type = detect_media_type(filepath)
+                        if m_type:
+                            media_items.append({"path": filepath, "type": m_type})
             else:
                 filepath = _resolve_entry_filepath(ydl, info_dict, temp_dir)
                 if filepath:
-                    media_items.append({"path": filepath, "type": detect_media_type(filepath)})
+                    seen_paths.add(filepath)
+                    m_type = detect_media_type(filepath)
+                    if m_type:
+                        media_items.append({"path": filepath, "type": m_type})
 
             if not media_items:
                 for filepath in glob.glob(os.path.join(temp_dir, "*")):
                     if not os.path.isfile(filepath) or filepath in seen_paths:
                         continue
                     seen_paths.add(filepath)
-                    media_items.append({"path": filepath, "type": detect_media_type(filepath)})
+                    m_type = detect_media_type(filepath)
+                    if m_type:
+                        media_items.append({"path": filepath, "type": m_type})
 
             return temp_dir, media_items, info_dict
     except Exception as error:
@@ -138,4 +151,3 @@ def download_media(url: str):
 
         shutil.rmtree(temp_dir, ignore_errors=True)
         return None, [], None
-
